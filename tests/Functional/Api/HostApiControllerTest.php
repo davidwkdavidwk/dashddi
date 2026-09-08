@@ -63,6 +63,45 @@ class HostApiControllerTest extends AppWebTestCase
         $this->assertSame('Patched Host', $data['name']);
     }
 
+    public function testCreateWithDuid(): void
+    {
+        $data = $this->apiRequest('POST', '/api/hosts', [
+            'name' => 'Duid Host',
+            'duid' => 'DUID-LLT:00011234567890abcdef',
+        ]);
+        $this->assertSame(201, $this->client->getResponse()->getStatusCode());
+        $this->assertSame('00:01:00:01:12:34:56:78:90:ab:cd:ef', $data['duid']);
+        $this->assertSame('DUID-LLT:00011234567890abcdef', $data['duid_display']);
+    }
+
+    public function testCreateRejectsMalformedDuid(): void
+    {
+        $this->apiRequest('POST', '/api/hosts', ['name' => 'Bad Duid Host', 'duid' => 'not-hex']);
+        $this->assertSame(422, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testCreateRejectsDuplicateDuid(): void
+    {
+        $this->apiRequest('POST', '/api/hosts', ['name' => 'Duid Host A', 'duid' => 'aabbccddeeff00112233']);
+        $this->assertSame(201, $this->client->getResponse()->getStatusCode());
+
+        $this->apiRequest('POST', '/api/hosts', ['name' => 'Duid Host B', 'duid' => 'aabbccddeeff00112233']);
+        $this->assertSame(422, $this->client->getResponse()->getStatusCode());
+    }
+
+    public function testUpdateSetsAndClearsDuid(): void
+    {
+        $host = $this->makeHost('Duid Update Host');
+
+        $data = $this->apiRequest('PATCH', "/api/hosts/{$host->getId()}", ['duid' => 'aabbccddeeff00112233']);
+        $this->assertSame(200, $this->client->getResponse()->getStatusCode());
+        $this->assertSame('aa:bb:cc:dd:ee:ff:00:11:22:33', $data['duid']);
+
+        $data = $this->apiRequest('PATCH', "/api/hosts/{$host->getId()}", ['duid' => null]);
+        $this->assertSame(200, $this->client->getResponse()->getStatusCode());
+        $this->assertNull($data['duid']);
+    }
+
     public function testSoftDelete(): void
     {
         $host = $this->makeHost('Delete Host');

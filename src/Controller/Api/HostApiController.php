@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[Route('/api/hosts')]
 class HostApiController extends AbstractController
@@ -56,6 +57,7 @@ class HostApiController extends AbstractController
         EntityManagerInterface $em,
         BuildingRepository $buildingRepo,
         TagRepository $tagRepo,
+        ValidatorInterface $validator,
     ): JsonResponse {
         $data = json_decode($request->getContent(), true) ?? [];
 
@@ -66,6 +68,7 @@ class HostApiController extends AbstractController
         $host = new Host();
         $host->setName($data['name']);
         $host->setRoom($data['room'] ?? null);
+        $host->setDuid($data['duid'] ?? null);
 
         if (!empty($data['building_id'])) {
             $building = $buildingRepo->find($data['building_id']);
@@ -82,6 +85,10 @@ class HostApiController extends AbstractController
             }
         }
 
+        if ($error = $this->entityErrors($validator, $host)) {
+            return $this->json(['error' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $em->persist($host);
         $em->flush();
 
@@ -95,6 +102,7 @@ class HostApiController extends AbstractController
         EntityManagerInterface $em,
         BuildingRepository $buildingRepo,
         TagRepository $tagRepo,
+        ValidatorInterface $validator,
     ): JsonResponse {
         if ($host->isDeleted()) {
             return $this->json(['error' => 'Not found'], Response::HTTP_NOT_FOUND);
@@ -110,6 +118,10 @@ class HostApiController extends AbstractController
 
         if (array_key_exists('room', $data)) {
             $host->setRoom($data['room']);
+        }
+
+        if (array_key_exists('duid', $data)) {
+            $host->setDuid($data['duid']);
         }
 
         if (array_key_exists('building_id', $data)) {
@@ -136,6 +148,10 @@ class HostApiController extends AbstractController
                     $host->addTag($tag);
                 }
             }
+        }
+
+        if ($error = $this->entityErrors($validator, $host)) {
+            return $this->json(['error' => $error], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $em->flush();
@@ -223,19 +239,34 @@ class HostApiController extends AbstractController
         return $this->json(null, Response::HTTP_NO_CONTENT);
     }
 
+    private function entityErrors(ValidatorInterface $validator, Host $host): ?string
+    {
+        $violations = $validator->validate($host);
+        if (count($violations) === 0) {
+            return null;
+        }
+        $messages = [];
+        foreach ($violations as $v) {
+            $messages[] = ($v->getPropertyPath() ? $v->getPropertyPath() . ': ' : '') . $v->getMessage();
+        }
+        return implode('; ', $messages);
+    }
+
     private function serialize(Host $host): array
     {
         return [
-            'id'          => $host->getId(),
-            'name'        => $host->getName(),
-            'room'        => $host->getRoom(),
-            'building_id' => $host->getBuilding()?->getId(),
-            'tag_ids'     => $host->getTags()->map(fn($t) => $t->getId())->toArray(),
-            'deleted_at'  => $host->getDeletedAt()?->format(\DateTimeInterface::ATOM),
-            'created_at'  => $host->getCreatedAt()->format(\DateTimeInterface::ATOM),
-            'updated_at'  => $host->getUpdatedAt()->format(\DateTimeInterface::ATOM),
-            'created_by'  => $host->getCreatedBy(),
-            'updated_by'  => $host->getUpdatedBy(),
+            'id'           => $host->getId(),
+            'name'         => $host->getName(),
+            'room'         => $host->getRoom(),
+            'duid'         => $host->getDuid(),
+            'duid_display' => $host->getDuidDisplay(),
+            'building_id'  => $host->getBuilding()?->getId(),
+            'tag_ids'      => $host->getTags()->map(fn($t) => $t->getId())->toArray(),
+            'deleted_at'   => $host->getDeletedAt()?->format(\DateTimeInterface::ATOM),
+            'created_at'   => $host->getCreatedAt()->format(\DateTimeInterface::ATOM),
+            'updated_at'   => $host->getUpdatedAt()->format(\DateTimeInterface::ATOM),
+            'created_by'   => $host->getCreatedBy(),
+            'updated_by'   => $host->getUpdatedBy(),
         ];
     }
 }
